@@ -260,6 +260,7 @@ def geocode_address(text, city=None):
 
 
 IBGE_CENSUS_2022 = 'https://servicodados.ibge.gov.br/api/v3/agregados/4714/periodos/2022/variaveis/93%7C6318%7C614'
+IBGE_SIDRA_2022 = 'https://apisidra.ibge.gov.br/values/t/4714'
 
 def parse_ibge_profile(payload, city_id):
     """Converte variáveis 93, 6318 e 614 do agregado 4714 do IBGE.
@@ -292,13 +293,52 @@ def parse_ibge_profile(payload, city_id):
     return result
 
 
+def parse_sidra_profile(payload, city_id):
+    """Converte a resposta da API SIDRA sem confundir município, ano ou variável."""
+    result=parse_ibge_profile(None,city_id)
+    result['api_url']=f'{IBGE_SIDRA_2022}/n6/{int(city_id)}/v/93,6318,614/p/2022'
+    if not isinstance(payload,list):return result
+    mapping={'93':'population','6318':'area_km2','614':'density_per_km2'}
+    for row in payload:
+        if not isinstance(row,dict):continue
+        if str(row.get('D1C'))!=str(city_id) or str(row.get('D3C'))!='2022':continue
+        key=mapping.get(str(row.get('D2C')))
+        if not key:continue
+        raw=row.get('V')
+        if not isinstance(raw,(str,int,float)) or str(raw).strip() in ('','-','...','..','X','x'):continue
+        try:
+            number=float(str(raw).strip().replace(',','.'))
+        except (ValueError,OverflowError):continue
+        if not 0<=number<1e12:continue
+        result[key]=int(number) if key=='population' else round(number,2)
+    return result
+
+
 def get_ibge_profile(city_id):
-    """Consulta oficial em cache (30 dias). Falha sem fabricar indicadores."""
+    """Tenta duas APIs oficiais e evita guardar resultados vazios em cache por 30 dias."""
+    city_id=int(city_id)
     def load():
-        response=http_get(IBGE_CENSUS_2022,
-             {'localidades':f'N6[{int(city_id)}]'},timeout=8).json()
-        return parse_ibge_profile(response,city_id)
+        partial=parse_ibge_profile(None,city_id)
+        try:
+            raw=http_get(IBGE_CENSUS_2022,
+                         {'localidades':f'N6[{city_id}]'},timeout=16).json()
+            partial=parse_ibge_profile(raw,city_id)
+            if partial['population'] is not None:return partial
+        except (httpx.HTTPError,ValueError,TypeError,KeyError,json.JSONDecodeError):
+            pass
+        try:
+            url=f'{IBGE_SIDRA_2022}/n6/{city_id}/v/93,6318,614/p/2022'
+            sidra=parse_sidra_profile(http_get(url,timeout=18).json(),city_id)
+            if sidra['population'] is not None:
+                for field in ('area_km2','density_per_km2'):
+                    if sidra[field] is None:sidra[field]=partial[field]
+                return sidra
+        except (httpx.HTTPError,ValueError,TypeError,KeyError,json.JSONDecodeError):
+            pass
+        # Resultados vazios NÃO devem entrar em cache.
+        raise LookupError('Censo 2022 temporariamente indisponível nas fontes oficiais')
     try:
-        return cached(f'ibge-censo2022-4714:{int(city_id)}:v1',load,30*86400)
-    except (httpx.HTTPError,ValueError,TypeError,KeyError,json.JSONDecodeError):
+        # v2 abandona entradas negativas gravadas pela versão anterior.
+        return cached(f'ibge-censo2022-4714:{city_id}:v2',load,30*86400)
+    except (LookupError,httpx.HTTPError,ValueError,TypeError,KeyError,json.JSONDecodeError):
         return parse_ibge_profile(None,city_id)
