@@ -10,7 +10,7 @@ import threading
 import unicodedata
 from urllib.parse import quote
 import httpx
-from .db import database
+from .db import database, ROOT
 
 IBGE = 'https://servicodados.ibge.gov.br/api/v1/localidades/municipios'
 NOMINATIM = 'https://nominatim.openstreetmap.org/search'
@@ -63,10 +63,25 @@ def http_get(url, params=None, timeout=17):
 
 
 def seed():
+    """Carrega municípios de base nacional empacotada, mesmo sem acesso às APIs."""
+    rows = [(code, name, uf, lat, lon, normalize(name)) for code, name, uf, lat, lon in FALLBACK]
+    csv_path = ROOT / 'data' / 'municipios_brasileiros.csv'
+    if csv_path.is_file():
+        bundle = []
+        with csv_path.open('r', encoding='utf-8', newline='') as stream:
+            for record in csv.DictReader(stream):
+                code = int(record['codigo_ibge'])
+                uf = UF[int(record['codigo_uf'])]
+                name = record['nome'].strip()
+                latitude, longitude = float(record['latitude']), float(record['longitude'])
+                if not name or not valid_brazil_coords(latitude, longitude):
+                    raise ValueError('Coordenadas ou nome inválidos no cadastro empacotado')
+                bundle.append((code, name, uf, latitude, longitude, normalize(name)))
+        if len(bundle) < 5500 or len({row[0] for row in bundle}) != len(bundle):
+            raise ValueError('Cadastro de municípios empacotado incompleto ou duplicado')
+        rows.extend(bundle)
     with database() as db:
-        db.executemany('INSERT OR IGNORE INTO municipalities VALUES (?,?,?,?,?,?)',
-                       [(i,n,uf,lat,lon,normalize(n)) for i,n,uf,lat,lon in FALLBACK])
-
+        db.executemany('INSERT OR IGNORE INTO municipalities VALUES (?,?,?,?,?,?)', rows)
 
 def count_municipalities():
     with database() as db:
