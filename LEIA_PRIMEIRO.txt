@@ -1,0 +1,14 @@
+AEVIA 1.7 BETA — ALTERACOES PARA PUBLICACAO
+
+Abra iniciar_aevia.bat para testar localmente em http://127.0.0.1:8017
+
+PRINCIPAIS AJUSTES:
+- Busca da Brasiliana pode nao trazer resultados: o AEVIA informa isso e oferece pesquisa Wikimedia Commons.
+- A participacao publica fica fechada no modo Beta para evitar perda de imagens em hospedagem gratuita.
+- Aviso visivel de Beta; a linha do tempo e 2050 continuam exploratorios.
+- render.yaml e guia docs/PUBLICAR_BETA_GRATUITA.md incluidos.
+- Sem custo obrigatorio para a Beta de demonstracao.
+
+Antes de publicar: faca deploy de um NOVO repositorio GitHub na sua conta e confirme o plano Free. Nao publique a pasta storage, o arquivo .env nem senhas.
+
+Se ja houver contribuicoes nas pastas antigas, nao apague essas pastas.

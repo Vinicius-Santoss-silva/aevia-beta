@@ -1,0 +1,17 @@
+# AEVIA Beta gratuita / modo somente-leitura. Sem dados permanentes.
+services:
+  - type: web
+    name: aevia-beta-brasil
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        value: beta
+      - key: ENABLE_PUBLIC_CONTRIBUTIONS
+        value: 'no'
+      - key: ENABLE_PUBLIC_NOMINATIM
+        value: 'no'
+      - key: PYTHONUNBUFFERED
+        value: '1'
